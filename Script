@@ -1,0 +1,802 @@
+#===========================================================================
+# HEIRUKICHI MAP ROTATION SCRIPT - VX ACE
+#===========================================================================
+# Version 1.3
+# - Last Update: 03-19-2018 [M-D-Y] (updated from computer)
+# - Requires:	GaryCXJk - Free Movement
+#				Galv's Layer Graphics
+#				Hime's Collision Maps
+#				Victor Engine - Diagonal Movement
+#				and any required script to let these work
+#===========================================================================
+# UPDATE LOG
+#===========================================================================
+# * Version 1.1:
+#		- fixed a bug that caused collisions to be miscalculated after
+#		  rotating a map.
+#		- the rotate_map method now keeps track of your screen tone and sets
+#		  it back to that tone after rotations.
+#		- fixed a bug that caused lights to not be displayed properly after
+#		  rotating a map.
+# * Version 1.2:
+#		- aliased the layer method in the Game_Interpreter class to add a
+#		  new method capable of skipping layer id 3 (it was not properly
+#		  aligned for some reason not related to my script).
+#		- edited hmrs_setup_map_layers method in the Game_Interpreter class
+#		  so that it is possible to skip refreshing layers after using it.
+# * Version 1.3:
+#		- fixed a bug that caused the player to not collide properly with
+#		  events from every perspective different from the original one.
+#		- overwritten few methods of Game_Player to properly calculate
+#		  collisions with events after rotation.
+#		- overwritten draw_box method in Sprite_CollisionBox to add a visual
+#		  effect that reflects player collisions after rotations in debug
+#		  mode.
+#===========================================================================
+# TERMS OF USE
+#===========================================================================
+# This script was commissioned by Robert Character Creator. Below there is a
+# link to its profile on RPG Maker Forums.
+# https://forums.rpgmakerweb.com/index.php?members/robert-character-creator.28468/
+#
+# Feel free to edit this script as much as you want as long as you give
+# proper credit to me. This script is under the CC BY_SA 3.0 license.
+# https://creativecommons.org/licenses/by-sa/3.0/
+# 
+#===========================================================================
+# CREDITS
+#===========================================================================
+# When using this script you have to credit me (Heirukichi). You can give
+# credits in any of the following ways:
+#
+# - Heirukichi
+#
+# Keep in mind that if you use this script for commercial games I'd like to
+# be notified about it.
+#
+# Of course do not forget to give proper credits to those who wrote the
+# required scripts as well. Instruction on how to credit them are included
+# in their scripts.
+#===========================================================================
+# DESCRIPTION
+#===========================================================================
+# This script offers a simple way to rotate maps and events in a map. Since
+# doing this is very time consuming it tints the screen and freezes graphics
+# so the player does not see the whole process.
+# Larger maps with a large amount of events require more time to be rotated.
+#===========================================================================
+# COMPATIBILITY
+#===========================================================================
+# This script creates new methods for Game_CharacterBase, Game_Interpreter
+# and Game_Map. It should be compatible with other script as long as they do
+# not overwrite these methods. It is highly unlikely that this script works
+# with pixel movement scripts other than "GaryCXJk - Free Movement" and I do
+# not provide support if you use it for other free movement scripts.
+# In the list below you can see which method is new and which not. Be sure
+# to place this script BEFORE every other script that aliases one of the
+# overwritten methods.
+#===========================================================================
+# METHODS
+#===========================================================================
+# Game_Map
+#	* rotation 							(new method)
+#	* hmrs_rcx 							(new method)
+#	* hmrs_rcy 							(new method)
+#	* hmrs_bottom_z 					(new method)
+#	* get_origin_coordinates 			(new method)
+#	* rotated?							(new method)
+#	* set_bottom_layer_z				(new method)
+#	* setup								(aliased method)
+#---------------------------------------------------------------------------
+# Game_CharacterBase
+#	* rotation							(new method)
+#	* initialize						(aliased method)
+#	* make_invisible					(new method)
+#	* make_visible						(new method)
+#	* rot_visible						(new method)
+#	* calculate_collision_coordinates	(new method)
+#	* calculate_new_coordinates 		(new method)
+#	* rotate_position					(new method)
+#	* get_rotated_direction				(new method)
+#	* passable?							(OVERWRITTEN METHOD!)
+#---------------------------------------------------------------------------
+# Game_Player
+#	* initialize						(aliased method)
+#	* collision_rect					(OVERWRITTEN METHOD!)
+#	* collide_with_events?				(OVERWRITTEN METHOD!)
+#	* collide_with_vehicles?			(OVERWRITTEN METHOD!)
+#	* refresh							(OVERWRITTEN METHOD!)
+#---------------------------------------------------------------------------
+# Game_Interpreter
+#	* rotate_map						(new method)
+#	* hmrs_setup_map_layers				(new method)
+#	* increase_rotation_variable		(new method)
+#	* tint_screen						(new method)
+#	* tint_black						(new method)
+#	* tint_normal						(new method)
+#	* tint_white						(new method)
+#	* set_map_bottom_layer_z			(new method)
+#	* hmrs_transfer						(new method)
+#	* layer								(aliased method)
+#---------------------------------------------------------------------------
+# Sprite_CollisionBox
+#	* draw_box							(OVERWRITTEN METHOD!)
+#===========================================================================
+# INSTRUCTIONS
+#---------------------------------------------------------------------------
+# Using this script you can rotate your map and any associated layer. Doing
+# so requires a script call like this:
+#
+# rotate_map(map_id, lower_layer_id, top_layer_id, number_of_rotations)
+#
+# The script call performs a 90 degrees clock-wise rotation of your map.
+# That said rotation applies to events and layers.
+#
+#---------------------------------------------------------------------------
+# WARNING:	Rotating a map is time consuming and requires a few seconds.
+#			The higher the number of events in a map, the longer the time
+#			required to perform a rotation.
+#---------------------------------------------------------------------------
+#
+# By default every event changes the direction it is facing after being
+# rotated. Since not every event is supposed to be visible from any point of
+# view and not every event (like spheres) has to change direction when
+# rotated, you can tell the engine which event to rotate and which event to
+# hide.
+#
+#---------------------------------------------------------------------------
+# * Fixed Direction:
+#---------------------------------------------------------------------------
+# To prevent changes to an event direction you can check the default option
+# "Direction Fix" in your event page. Keep in mind that this ONLY APPLIES TO
+# THE PAGE WHERE YOU ACTUALLY CHECK THAT OPTION. If your event has two pages
+# you can have one of them with fixed direction while the other one rotates
+# normally. This also applies to events with more than 2 pages.
+#
+#---------------------------------------------------------------------------
+# * Hidden Events:
+#---------------------------------------------------------------------------
+# To hide events while using certain perspectives you can add the following
+# line to the first comment in your event:
+#
+# <HMRS invisible p1 p2>
+#
+# In the previous line p1 and p2 are the ID of your perspectives. You can
+# have more than two of them in the same line. Perspective ID is as follows:
+#
+# Normal View	-> 0
+# 90° Rotation	-> 1
+# 180° Rotation	-> 2
+# 270° Rotation	-> 3
+#
+# Here is an example of how you can use it:
+# <HMRS invisible 1 3>
+# This line hides the event when using 90° and 270° rotated perspectives.
+# <HMRS invisible 1>
+# This line hides the event only when looking from the perspective 1 (90°).
+#
+#---------------------------------------------------------------------------
+# WARNING:
+#---------------------------------------------------------------------------
+# The maximum amount of perspectives used to hide events should ALWAYS be 3.
+# While the script itself is supposed to handle events that hide from every
+# point of view, I'd like to remind you that the process is time consuming
+# and so you should limit its use to the minimum in order to run your game
+# as smoothly as possible.
+#---------------------------------------------------------------------------
+# Here is a little extra. This was not part of the original request but
+# since I had to implement a way of hiding events it is easy to use it this
+# way as well.
+#---------------------------------------------------------------------------
+# NOTE (A LITTLE EXTRA):
+#---------------------------------------------------------------------------
+# Proper usage of hidden events and map rotations leads to more realistic
+# environments where you can place events on walls that are normally not
+# used due to their original position (vertical walls cannot be normally
+# seen using the default perspective). The only thing you should know to do
+# such a thing is that you can only hide events when you rotate maps.
+# This means that if you want to hide events from perspective 0 you have to
+# include a map rotation in your transfer event or use the default script
+# call to rotate maps upon player transfer (see below).
+#---------------------------------------------------------------------------
+#
+# This script provides a way of handling map layers all together. To do it
+# you can use the following script call (just a single line) to load new
+# layers and refresh them.
+#
+# hmrs_setup_map_layers(lid_min, lid_max, need_refresh)
+#
+# lid_min is the ID of the lower layer you want to load this way (IT IS NOT
+# ITS Z VALUE!!!!!!) while lid_max is the ID of the last layer you want to
+# handle this way. Layers IDs of the layers you want to handle this way MUST
+# be included in that range. If they are not you have to handle them
+# separately using the default way.
+# need_refresh is an additional parameter (optional). It is true by default
+# so that every time the script call is used layers are refreshed. Sometimes
+# you might need to set layers separately, when doing so refreshing them
+# every time is unnecessary so you can set need_refresh to false and refresh
+# them all together after you set them all.
+#
+#---------------------------------------------------------------------------
+# !! NOTE FOR THOSE WHO WANT TO EDIT THIS SCRIPT !!
+#---------------------------------------------------------------------------
+# For some reason the default layer script has an issue where layer 3 is not
+# perfectly aligned. To solve this I aliased the layer method. The new one
+# acts the same as the old one but skips layer with id 3.
+# This means that setting up a layer (using either my automatic method or
+# the old method) with id 3 means actually setting up a layer with id 4 even
+# if you have to write 3. This shifts every layer index after 2 by 1.
+#
+# Example:
+# hmrs_setup_map_layers(0, 5) -> layer IDs: 0, 1, 2, 4, 5,  6
+# hmrs_setup_map_layers(0, 2) -> layer IDs: 0, 1, 2
+# layer(1, 1, ["layer_1.png",0,0,255,z,0,0,0]) -> layer ID: 1
+# layer(1, 4, ["layer_1.png",0,0,255,z,0,0,0]) -> layer ID: 5
+#
+# THIS ONLY CHANGES THE WAY THE ENGINE STORES THEM! IT DOES NOT CHANGE THE
+# WAY YOU HAVE TO USE THEM!
+# IF YOU WANT TO USE 4 LAYERS JUST SET UP LAYERS FROM 0 TO 3. THE ENGINE
+# WILL AUTOMATICALLY CHANGE LAYER 3 ID TO 4. IF YOU WANT TO MODIFY IT LATER
+# JUST TELL THE ENGINE TO MODIFY LAYER 3, IT WILL OPERATE ON THE CORRECT
+# LAYER.
+#---------------------------------------------------------------------------
+#
+# This script provides automatic layer handling customization options. You
+# can set them in the HMRS::CONFIG module. Every option is described there.
+#---------------------------------------------------------------------------
+# Using this script you can also handle player transfer and layers together.
+# The following script call in a transfer event does the trick.
+#
+# hmrs_transfer(map, x, y, d, lid_min, lid_max, fade = "black", r = nil)
+#
+# map		-> new map ID without leading zeros.
+# x, y		-> player coordinates in the new map.
+# d			-> player direction after being transfered.
+# lid_min	-> same as lid_min in hmrs_setup_map_layers.
+# lid_max	-> same as lid_max in hmrs_setup_map_layers.
+# fade		-> screen color to perform fade ("white" or "black").
+# r			-> * OPTIONAL * number of rotations to perform during transfer.
+#
+# NOTE: this option is used INSTEAD of the default player transfer event
+#		event command. DO NOT USE BOTH!
+#---------------------------------------------------------------------------
+# FEW EXTRA UTILITIES:
+#---------------------------------------------------------------------------
+# Here are few extra utilities. They are extra since they are not part of
+# the original request but I decided to add them since I think they might be
+# usefull.
+#
+#---------------------------------------------------------------------------
+# Tint Screen Alternatives
+#---------------------------------------------------------------------------
+# tint_screen(tone, duration)
+# tint_normal(duration)
+# tint_black(duration)
+# tint_white(duration)
+#
+# These script calls can be used to tint your screen. Every script call has
+# a parameter called duration (in frames) that represents the number of
+# frames used to tint your screen. That parameter is optional and it is 0
+# when omitted.
+# The only parameter you cannot omit is tone while using tint_screen. That
+# is the tone you want to use to tint your screen. If you do not know what
+# it is and you want to use it you can press F1 in your engine and look for
+# the Tone class in the index.
+#
+#---------------------------------------------------------------------------
+# Map Layers Handling
+#---------------------------------------------------------------------------
+# set_map_bottom_layer_z(value)
+#
+# This line is used to change the z value of the bottom layer in the map
+# where you use it. It changes the map default value for the bottom layer
+# from the one you set in the CONFIG module to a new value (value must be an
+# integer and can be negative).
+#
+# If you use a script call to handle layers in the map where you changed the
+# default z value with this script call your layers will have their z value
+# shifted by (default z value in CONFIG module) - (new z value).
+#===========================================================================
+
+$imported = {} if $imported.nil?
+$imported["Heirukichi-MapRotationScript"] = true
+
+module HMRS
+
+	module CONFIG
+		
+		#===================================================================
+		# Z_DISTANCE
+		#-------------------------------------------------------------------
+		# Set this value to be the distance between layers. It is used when
+		# setting up layers automatically.
+		#===================================================================
+		
+		Z_DISTANCE = 100
+		
+		#===================================================================
+		# BOTTOM_LAYER_Z
+		#-------------------------------------------------------------------
+		# Set this value to be the z value for the bottom layer. Since it is
+		# possible to have layers below round terrain this can be less than
+		# 0. This is used when setting up layers automatically.
+		#===================================================================
+		
+		BOTTOM_LAYER_Z = 1
+		
+		#===================================================================
+		# ROTATION_TINT
+		#-------------------------------------------------------------------
+		# This value can be either true or false. When it is set to true the
+		# screen tints during map rotation. It requires time but hides the
+		# process to the player's eyes. Default is true (recommended).
+		#===================================================================
+		ROTATION_TINT = true
+		
+		#===================================================================
+		# DEFAULT_ROTATION_TINT_COLOR
+		#-------------------------------------------------------------------
+		# This value must be an integer. When set to 0 it tints your screen
+		# black during map rotations, when set to something different than 0
+		# it tints it white. I'd recommend using 0 and 1 but since it can be
+		# anything this allows you to modify the script if you want to add
+		# more tones.
+		#===================================================================
+		
+		DEFAULT_ROTATION_TINT_COLOR = 0
+		
+	end
+	
+	#=======================================================================
+	# !!! WARNING !!! --------- !!! WARNING !!! --------- !!! WARNING !!!
+	#=======================================================================
+	# THE CONFIGURATION MODULE FOR THIS SCRIPT ENDS HERE!!
+	#=======================================================================
+	#
+	# Do not edit what comes after this point unless you know what you are
+	# doing.
+	# Changing anything below (words, punctuation, numbers, etc.) will
+	# change the way the script works and might even prevent the script from
+	# working.
+	#
+	#=======================================================================
+	# !!! WARNING !!! --------- !!! WARNING !!! --------- !!! WARNING !!!
+	#=======================================================================
+	# THE CONFIGURATION MODULE FOR THIS SCRIPT ENDS HERE!!
+	#=======================================================================
+  
+	LAYERS_PATH = "Graphics/Layers/"
+	FNAME = "map%03d_%d_%d.png"
+	FNAME_NO_ROTATION = "map%03d_%d.png"
+	RDIR = [
+		{2 => 2, 4 => 4, 6 => 6, 8 => 8, 1 => 1, 3 => 3, 7 => 7, 9 => 9},
+		{2 => 6, 4 => 2, 6 => 8, 8 => 4, 1 => 7, 3 => 1, 7 => 9, 9 => 3},
+		{2 => 8, 4 => 6, 6 => 4, 8 => 2, 1 => 9, 3 => 7, 7 => 3, 9 => 1},
+		{2 => 4, 4 => 8, 6 => 2, 8 => 6, 1 => 3, 3 => 9, 7 => 1, 9 => 7},
+	]
+	CRTABLE = [
+		{2 => 2, 4 => 4, 6 => 6, 8 => 8, 1 => 1, 3 => 3, 7 => 7, 9 => 9},
+		{2 => 4, 4 => 8, 6 => 2, 8 => 6, 1 => 3, 3 => 9, 7 => 1, 9 => 7},
+		{2 => 8, 4 => 6, 6 => 4, 8 => 2, 1 => 9, 3 => 7, 7 => 3, 9 => 1},
+		{2 => 6, 4 => 2, 6 => 8, 8 => 4, 1 => 7, 3 => 1, 7 => 9, 9 => 3},
+	]
+	COMMENT_LINE = "<HMRS invisible>"
+  
+end
+
+class Game_Map
+	
+	attr_accessor :rotation
+	attr_reader :hmrs_rcx
+	attr_reader :hmrs_rcy
+	attr_reader :hmrs_bottom_z
+	
+	alias hmrs_setup_old setup
+	def setup(map_id)
+		hmrs_setup_old(map_id)
+		@rotation = 0
+		set_bottom_layer_z(HMRS::CONFIG::BOTTOM_LAYER_Z)
+		get_origin_coordinates
+	end
+	
+	def get_origin_coordinates
+		@hmrs_rcx = self.width / 2
+		@hmrs_rcy = self.height / 2
+	end
+	
+	def rotated?
+		return (rotation > 0)
+	end
+	
+	def set_bottom_layer_z(value)
+		@hmrs_bottom_z = value
+	end
+  
+end
+
+class Game_CharacterBase
+	
+	attr_reader :rotation
+	
+	alias hmrs_initialize_old	initialize
+	def initialize
+		@rotation = 0
+		hmrs_initialize_old
+	end
+	
+	def make_invisible
+		@opacity = 0
+		@through = true
+	end
+	
+	def make_visible
+		@opacity = 255
+		@through = false
+	end
+	
+	def rot_visible?(rstr)
+		flag_is_visible = true
+		if rstr.include?("HMRS invisible ")
+			cll = HMRS::COMMENT_LINE.length
+			rm_num = (rstr.length - cll)/2
+			rm_index = 0
+			while (rm_index < rm_num)
+				if $game_map.rotation == rstr[cll + rm_index*2].to_i
+					flag_is_visible = false
+					break
+				end
+			rm_index += 1
+			end
+		end
+		return flag_is_visible
+	end
+	
+	def calculate_collision_coordinates(old_x, old_y)
+		x_new = old_x
+		y_new = old_y
+		if ($game_map.rotation > 0)
+			x1 = old_x - $game_map.hmrs_rcx
+			y1 = old_y - $game_map.hmrs_rcy
+			case $game_map.rotation
+			when 1
+				x_new = y1
+				y_new = -x1
+			when 2
+				x_new = -x1
+				y_new = -y1
+			when 3
+				x_new = -y1
+				y_new = x1
+			end
+			x_new += $game_map.hmrs_rcx
+			y_new += $game_map.hmrs_rcy
+		end
+		return [x_new, y_new]
+	end
+  
+	def calculate_new_coordinates(old_x, old_y, rotation)
+		x_new = old_x
+		y_new = old_y
+		if (rotation > 0)
+			x1 = old_x - $game_map.hmrs_rcx
+			y1 = old_y - $game_map.hmrs_rcy
+			case rotation
+			when 1
+				x_new = -y1
+				y_new = x1
+			when 2
+				x_new = -x1
+				y_new = -y1
+			when 3
+				x_new = y1
+				y_new = -x1
+			end
+			x_new += $game_map.hmrs_rcx
+			y_new += $game_map.hmrs_rcy
+		end
+		return [x_new, y_new]
+	end
+	
+	def rotate_position
+		rotation_number = $game_map.rotation - self.rotation
+		if rotation_number < 0
+			rotation_number += 4
+		end
+		new_xy = calculate_new_coordinates(self.x, self.y, rotation_number)
+		moveto(new_xy[0], new_xy[1])
+		get_rotated_direction
+		@rotation = $game_map.rotation
+	end
+	
+	def get_rotated_direction
+		r = $game_map.rotation - @rotation
+		new_direction = HMRS::CRTABLE[r][self.direction]
+		@diagonal = HMRS::RDIR[r][self.diagonal]
+		set_direction(new_direction)
+	end
+	
+	def passable?(x, y, d)
+		if $game_map.free_movement_enabled?
+			rd = HMRS::RDIR[$game_map.rotation][d]
+			rd.nil? ? rd = d : nil
+			horz = (d - 1) % 3 - 1
+			rhorz = (rd - 1) % 3 - 1
+			vert = 1 - ((d - 1) / 3)
+			rvert = 1 - ((rd - 1) / 3)
+			pixelstep = CXJ::FREE_MOVEMENT::PIXELS_PER_STEP / 32.0
+			extra_x = (($game_map.rotation%2 == 0) ? rhorz : rvert)
+			extra_y = (($game_map.rotation%2 == 0) ? rvert : rhorz)
+			if $game_map.rotation == 1
+				extra_x = -extra_x
+			elsif $game_map.rotation == 2
+				extra_x = -extra_x
+				extra_y = -extra_y
+			elsif $game_map.rotation == 3
+				extra_y = -extra_y
+			end
+			x2 = $game_map.round_x(x + horz * pixelstep)
+			y2 = $game_map.round_y(y + vert * pixelstep)
+			rx2 = $game_map.round_x(x + extra_x * pixelstep)
+			ry2 = $game_map.round_y(y + extra_y * pixelstep)
+			collision_map_xy = calculate_collision_coordinates(x, y)
+			collision_map_x2y2 = calculate_collision_coordinates(rx2, ry2)
+			rx = collision_map_xy[0]
+			ry = collision_map_xy[1]
+			rx2 = collision_map_x2y2[0]
+			ry2 = collision_map_x2y2[1]
+			return false unless $game_map.valid_rect?(x2, y2, collision_rect)
+			return true if @through || debug_through?
+			if $game_map.collision_map_enabled?
+				return false unless map_check_passage_collision_maps(rx, ry, rd, collision_rect)
+				return false unless map_check_passage_collision_maps(rx2, ry2, reverse_dir(rd), collision_rect)
+			else
+				return false unless map_passable_rect?(rx, ry, rd, collision_rect)
+				return false unless map_passable_rect?(rx2, ry2, reverse_dir(rd), collision_rect)
+			end
+			return false if collide_with_characters?(x2, y2)
+			return true
+		else
+			return game_characterbase_passable_cxj_fm?(x, y, d)
+		end
+	end
+	
+end
+
+class Game_Player < Game_Character
+
+	alias hmrs_gameplayer_initialize_old	initialize
+	def initialize
+		hmrs_gameplayer_initialize_old
+		@events_collision = nil
+	end
+	
+	def collide_with_events?(x, y)
+		if $game_map.free_movement_enabled?
+		$game_map.events_xy_rect_nt(x, y, collision_rect(true)).any? do |event|
+			(event.normal_priority? || self.is_a?(Game_Event)) && event != self
+		end
+		else
+			game_characterbase_collide_with_events_cxj_fm?(x, y)
+		end
+	end
+  
+
+	def collide_with_vehicles?(x, y)
+		if $game_map.free_movement_enabled?
+			$game_map.boat.pos_rect_nt?(x, y, collision_rect(true)) || $game_map.ship.pos_rect_nt?(x, y, collision_rect)
+		else
+			game_characterbase_collide_with_vehicles_cxj_fm?(x, y)
+		end
+	end
+	
+	def collision_rect(val = false)
+		key = @vehicle_type.id2name.upcase
+		if @vehicle_type != :walk && !CXJ::FREE_MOVEMENT::COLLISION[key].nil?
+			collision = CXJ::FREE_MOVEMENT::COLLISION[key]
+			return Rect.new(collision[0], collision[1], collision[2] - 1, collision[3] - 1)
+		end
+		return @events_collision if elements_collision_new(val)
+		return @custom_collision if !@custom_collision.nil?
+		return super
+	end
+	
+	def elements_collision_new(val)
+		return (!@custom_collision.nil?) && (!@events_collision.nil?) && val
+	end
+
+	def refresh
+		game_player_refresh_cxj_fm
+		return if actor.nil? || !$game_map.free_movement_enabled?
+		@custom_collision = nil
+		@interaction = CXJ::FREE_MOVEMENT::INTERACTION["DEFAULT"]
+		actor.actor.note.split(/[\r\n]+/).each { |line|
+			case line
+			when /<collisionbox:[ ]*(\d+),[ ]*(\d+),[ ]*(\d+),[ ]*(\d+)>/i
+				puts ("1 = #{$1}, 2 = #{$2}, 3 = #{$3}, 4 = #{$4}")
+				@custom_collision = Rect.new($1, $2, $3, $4)
+			when /<collisionbox:[ ]*(.+?)>/i
+				collision = CXJ::FREE_MOVEMENT::COLLISION[$1] if !CXJ::FREE_MOVEMENT::COLLISION[$1].nil?
+				crotated = []
+				puts ("ORIGINAL COLLISION RECT:\n1 = #{collision[0]}, 2 = #{collision[1]}, 3 = #{collision[2]}, 4 = #{collision[3]}")
+				puts ("ROTATION: #{self.rotation}")
+				collision.each do |p|
+					crotated << p
+				end
+				case self.rotation
+				when 1
+					crotated[0] = collision[1]
+					crotated[1] = collision[0]
+					crotated[2] = crotated[3]
+					crotated[3] = crotated[2]
+				when 2
+					crotated[0] = 32 - collision[0] - collision[2]
+					crotated[1] = 32 - collision[1] - collision[3]
+				when 3
+					crotated[0] = 32 - collision[1] - collision[3]
+					crotated[1] = collision[0]
+					crotated[2] = crotated[3]
+					crotated[3] = crotated[2]
+				end
+				@events_collision = Rect.new(collision[0], collision[1], collision[2], collision[3])
+				collision = crotated
+				puts ("NEW COLLISION RECT:\n1 = #{collision[0]}, 2 = #{collision[1]}, 3 = #{collision[2]}, 4 = #{collision[3]}")
+				@custom_collision = Rect.new(collision[0], collision[1], collision[2], collision[3])
+			when /<interactionbox (\d+):[ ]*(\d+),[ ]*(\d+),[ ]*(\d+),[ ]*(\d+)>/i
+				@interaction[$1] = [$2, $3, $4, $5] if $1 > 0 && $1 < 10
+				puts ("1 = #{$1}, 2 = #{$2}, 3 = #{$3}, 4 = #{$4}, 5 = #{$5}")
+			when /<interactionbox:[ ]*(.+?)>/i
+				@interaction = CXJ::FREE_MOVEMENT::INTERACTION[$1] if !CXJ::FREE_MOVEMENT::INTERACTION[$1].nil?
+			end
+		}
+	end
+	
+end
+
+class Game_Interpreter
+
+	alias hmrs_layer_old	layer
+  
+	def rotate_map(id, lid_min, lid_max, rotations = 1)
+		if HMRS::CONFIG::ROTATION_TINT
+			previous_tone = screen.tone.clone
+			case HMRS::CONFIG::DEFAULT_ROTATION_TINT_COLOR
+			when 0
+				Graphics.fadeout(60)
+				Graphics.freeze
+			when 1
+				tint_white(60)
+			else
+				tint_white(60)
+			end
+		end
+		rotations.times { increase_rotation_variable }
+		$game_map.events.each do |event|
+			event[1].rotate_position
+			if (event[1].list[0].code == 108)
+				hmrs_rstr = event[1].list[0]
+				hmrs_rstr.parameters.each do |strp|
+					event[1].rot_visible?(strp) ? event[1].make_visible : event[1].make_invisible
+				end
+			end
+		end
+		$game_player.rotate_position
+		hmrs_setup_map_layers(lid_min, lid_max)
+		refresh_layers
+		$game_player.refresh
+		10.times { Fiber.yield }
+		if (HMRS::CONFIG::ROTATION_TINT)
+			case HMRS::CONFIG::DEFAULT_ROTATION_TINT_COLOR
+			when 0
+				Graphics.transition(60)
+			else
+				screen.start_tone_change(previous_tone, 60)
+			end
+		end
+	end
+	
+	def hmrs_setup_map_layers(lid_min, lid_max, hmrs_refresh_needed = true)
+		id = $game_map.map_id
+		for i in lid_min..lid_max
+			path_name = "#{HMRS::LAYERS_PATH}"
+			fname = sprintf(HMRS::FNAME, id, i, $game_map.rotation)
+			unless File.exists?("#{path_name}#{fname}")
+				fname = sprintf(HMRS::FNAME_NO_ROTATION, id, i)
+			end
+			bz = $game_map.hmrs_bottom_z
+			z = bz + HMRS::CONFIG::Z_DISTANCE * (i - 1)
+			z = 0 if z < 0
+			layer($game_map.map_id, i, [fname,0,0,255,z,0,0,0])
+		end
+		refresh_layers if hmrs_refresh_needed
+	end
+	
+	def layer(map_id, i, param_arr)
+		hmrs_layer_old(map_id, (i>2 ? i+1 : i), param_arr)
+	end
+  
+	def increase_rotation_variable
+		if [0, 1, 2].include?($game_map.rotation)
+			$game_map.rotation += 1
+		else
+			$game_map.rotation = 0
+		end
+	end
+	
+	def tint_screen(tone, duration)
+		screen.start_tone_change(tone, duration)
+		unless (duration == 0)
+			duration.times { Fiber.yield }
+		end
+	end
+
+	def tint_black(duration = 0)
+		black_tone = Tone.new(-255, -255, -255)
+		tint_screen(black_tone, duration)
+	end
+	
+	def tint_normal(duration = 0)
+		normal_tone = Tone.new
+		tint_screen(normal_tone, duration)
+	end
+	
+	def tint_white(duration = 0)
+		white_tone = Tone.new(255, 255, 255)
+		tint_screen(white_tone, duration)
+	end
+	
+	def set_map_bottom_layer_z(value)
+		$game_map.set_bottom_layer_z(value)
+	end
+	
+	def hmrs_transfer(map, x, y, d, lid_min, lid_max, fade = "black", r = nil)
+		if fade == "black"
+			tint_black(60)
+		elsif fade == "white"
+			tint_white(60)
+		end
+		Graphics.freeze
+		$game_temp.fade_type = 2
+		r.nil? ? r2 = $game_map.rotation : r2 = r
+		$game_player.reserve_transfer(map, x, y, d)
+		Fiber.yield while $game_player.transfer?
+		rotate_map(map, lid_min, lid_max, r2)
+		if (r.nil? || (r == 0)) && ($game_map.rotation != 0)
+			player_xy_new = $game_player.calculate_new_coordinates(x, y, $game_map.rotation)
+			$game_player.moveto(player_xy_new[0], player_xy_new[1])
+		end
+		tint_normal
+		10.times { Fiber.yield }
+		Graphics.transition(60)
+	end
+  
+end
+
+if(CXJ::FREE_MOVEMENT::SHOW_COLLISION_BOXES)
+
+	class Sprite_CollisionBox < Sprite
+	
+		def draw_box
+			self.ox = 48
+			self.oy = 60
+			self.bitmap.clear
+			return if @parent_sprite.character.through && @parent_sprite.character.transparent
+			return if @parent_sprite.character.instance_of?(Game_Vehicle) && !@parent_sprite.character.on_map?
+			if (@parent_sprite.character == $game_player)
+				col_rect = @parent_sprite.character.collision_rect(true)
+			else
+				col_rect = @parent_sprite.character.collision_rect
+			end
+			self.bitmap.fill_rect(col_rect.x + 32, col_rect.y + 32, col_rect.width, col_rect.height, @color)
+			if(@parent_sprite.character == $game_player)
+				int_rec = $game_player.interaction_rect
+				d = $game_player.direction
+				horz = (d - 1) % 3 - 1
+				vert = 1 - ((d - 1) / 3)
+				int_rect = Rect.new(int_rec.x + 32 + 32 * horz, int_rec.y + 32 + 32 * vert, int_rec.width, int_rec.height)
+				self.bitmap.fill_rect(int_rect, @icolor)
+			end
+		end
+		
+	end
+  
+end
